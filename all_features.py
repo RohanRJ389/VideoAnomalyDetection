@@ -4,8 +4,8 @@ import numpy as np
 
 
 def calculate_num_objects(dataset, frame_key):
-    """Calculate the number of objects in a frame"""
-    return len(dataset[frame_key].keys())
+    """Calculate the number of objects in a frame."""
+    return len(dataset[frame_key])
 
 
 def calculate_bounding_box_positions(dataset, frame_key):
@@ -151,6 +151,56 @@ def calculate_movement_vector_angle_variance(dataset, frame_key):
     return angle_variance
 
 
+
+def calculate_interaction_count(boxes):
+    """Count the number of object pairs per frame whose Euclidean distance is below a predefined proximity threshold"""
+    proximity_threshold = 50  # pixels
+    interaction_count = 0
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            x1, y1, w1, h1 = boxes[i]
+            x2, y2, w2, h2 = boxes[j]
+            distance = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+            if distance < proximity_threshold:
+                interaction_count += 1
+    return interaction_count
+
+def calculate_mean_iou(boxes):
+    """Calculate the Intersection over Union (IoU) for all object pairs per frame"""
+    iou_values = []
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            x1, y1, w1, h1 = boxes[i]
+            x2, y2, w2, h2 = boxes[j]
+            intersection_area = calculate_intersection_area(x1, y1, w1, h1, x2, y2, w2, h2)
+            union_area = w1 * h1 + w2 * h2 - intersection_area
+            if union_area == 0:
+                iou = 0
+            else:
+                iou = intersection_area / union_area
+            iou_values.append(iou)
+    if len(iou_values) == 0:
+        return 0
+    else:
+        return np.mean(iou_values)
+
+def calculate_spatial_density_ratio(boxes):
+    """Compute the ratio of the total area occupied by all YOLO bounding boxes in a frame to the overall frame area"""
+    frame_width = 640  # pixels
+    frame_height = 480  # pixels
+    total_area = 0
+    for box in boxes:
+        x, y, w, h = box
+        total_area += w * h
+    spatial_density_ratio = total_area / (frame_width * frame_height)
+    return spatial_density_ratio
+
+def calculate_intersection_area(x1, y1, w1, h1, x2, y2, w2, h2):
+    """Calculate the intersection area of two rectangles"""
+    intersection_x = max(0, min(x1 + w1, x2 + w2) - max(x1, x2))
+    intersection_y = max(0, min(y1 + h1, y2 + h2) - max(y1, y2))
+    return intersection_x * intersection_y
+
 def calculate_features(h5_file_path, csv_file_path):
     """Calculate features for a given h5 file and save to a CSV file"""
     try:
@@ -181,6 +231,9 @@ def calculate_features(h5_file_path, csv_file_path):
                         "Direction Variance",
                         "Mean Displacement",
                         "Angle Variance",
+                        "Interaction Count",
+                        "Mean IoU",
+                        "Spatial Density",
                     ]
                 )
 
@@ -215,6 +268,9 @@ def calculate_features(h5_file_path, csv_file_path):
                     angle_variance = calculate_movement_vector_angle_variance(
                         dataset, frame_key
                     )
+                    interaction_count = calculate_interaction_count(boxes)
+                    mean_iou = calculate_mean_iou(boxes)
+                    spatial_density_ratio = calculate_spatial_density_ratio(boxes)
 
                     # Store the features in the dictionary
                     frame_number = int(frame_key.split("_")[-1])
@@ -232,6 +288,9 @@ def calculate_features(h5_file_path, csv_file_path):
                         "direction_variance": direction_variance,
                         "mean_displacement": mean_displacement,
                         "angle_variance": angle_variance,
+                        "interaction_count": interaction_count,
+                        "mean_iou": mean_iou,
+                        "spatial_density_ratio": spatial_density_ratio,
                     }
 
                     # Write the data to the CSV file
@@ -251,6 +310,9 @@ def calculate_features(h5_file_path, csv_file_path):
                             direction_variance,
                             mean_displacement,
                             angle_variance,
+                            interaction_count,
+                            mean_iou,
+                            spatial_density_ratio,
                         ]
                     )
 
