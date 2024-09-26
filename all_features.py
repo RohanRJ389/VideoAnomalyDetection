@@ -40,6 +40,57 @@ def calculate_class_distribution(dataset, frame_key):
         class_distribution = class_counts
     return class_distribution
 
+def calculate_velocity(dataset, frame_key):
+    """Calculate velocity for each object in a frame"""
+    velocities = []
+    for track_key in dataset[frame_key].keys():
+        box = dataset[frame_key][track_key]["box"][:]
+        if int(frame_key.split("_")[-1]) > 1:
+            prev_frame_key = f"frame_{int(frame_key.split('_')[-1]) - 1:05d}"
+            if prev_frame_key in dataset and track_key in dataset[prev_frame_key]:
+                prev_box = dataset[prev_frame_key][track_key]["box"][:]
+                dx = box[0] - prev_box[0]
+                dy = box[1] - prev_box[1]
+                velocity = np.sqrt(dx**2 + dy**2)
+                velocities.append(velocity)
+            else:
+                velocities.append(0)
+    mean_velocity = np.mean(velocities) if velocities else 0
+    max_velocity = np.max(velocities) if velocities else 0
+    var_velocity = np.var(velocities) if velocities else 0
+    return mean_velocity, max_velocity, var_velocity
+
+def calculate_acceleration(dataset, frame_key):
+    """Calculate acceleration for each object in a frame"""
+    accelerations = []
+    for track_key in dataset[frame_key].keys():
+        box = dataset[frame_key][track_key]["box"][:]
+        if int(frame_key.split("_")[-1]) > 2:
+            prev_frame_key = f"frame_{int(frame_key.split('_')[-1]) - 1:05d}"
+            prev_prev_frame_key = f"frame_{int(frame_key.split('_')[-1]) - 2:05d}"
+            if (
+                prev_frame_key in dataset
+                and prev_prev_frame_key in dataset
+                and track_key in dataset[prev_frame_key]
+                and track_key in dataset[prev_prev_frame_key]
+            ):
+                prev_box = dataset[prev_frame_key][track_key]["box"][:]
+                prev_prev_box = dataset[prev_prev_frame_key][track_key]["box"][:]
+                dx = box[0] - prev_box[0]
+                dy = box[1] - prev_box[1]
+                velocity = np.sqrt(dx**2 + dy**2)
+                prev_dx = prev_box[0] - prev_prev_box[0]
+                prev_dy = prev_box[1] - prev_prev_box[1]
+                prev_velocity = np.sqrt(prev_dx**2 + prev_dy**2)
+                acceleration = velocity - prev_velocity
+                accelerations.append(acceleration)
+            else:
+                accelerations.append(0)
+    mean_acceleration = np.mean(accelerations) if accelerations else 0
+    max_acceleration = np.max(accelerations) if accelerations else 0
+    var_acceleration = np.var(accelerations) if accelerations else 0
+    return mean_acceleration, max_acceleration, var_acceleration
+
 def calculate_features(h5_file_path, csv_file_path):
     """Calculate features for a given h5 file and save to a CSV file"""
     try:
@@ -55,7 +106,18 @@ def calculate_features(h5_file_path, csv_file_path):
 
                 # Write the header
                 writer.writerow(
-                    ["Frame Number", "Number of Objects", "Spatial Density", "Class Distribution"]
+                    [
+                        "Frame Number",
+                        "Number of Objects",
+                        "Spatial Density",
+                        "Class Distribution",
+                        "Mean Velocity",
+                        "Max Velocity",
+                        "Variance in Velocity",
+                        "Mean Acceleration",
+                        "Max Acceleration",
+                        "Variance in Acceleration",
+                    ]
                 )
 
                 # Create a dictionary to store the features per frame
@@ -74,6 +136,12 @@ def calculate_features(h5_file_path, csv_file_path):
                     class_distribution = calculate_class_distribution(
                         dataset, frame_key
                     )
+                    mean_velocity, max_velocity, var_velocity = calculate_velocity(
+                        dataset, frame_key
+                    )
+                    mean_acceleration, max_acceleration, var_acceleration = calculate_acceleration(
+                        dataset, frame_key
+                    )
 
                     # Store the features in the dictionary
                     frame_number = int(frame_key.split("_")[-1])
@@ -81,6 +149,12 @@ def calculate_features(h5_file_path, csv_file_path):
                         "num_objects": num_objects,
                         "spatial_density": spatial_density,
                         "class_distribution": class_distribution,
+                        "mean_velocity": mean_velocity,
+                        "max_velocity": max_velocity,
+                        "var_velocity": var_velocity,
+                        "mean_acceleration": mean_acceleration,
+                        "max_acceleration": max_acceleration,
+                        "var_acceleration": var_acceleration,
                     }
 
                     # Write the data to the CSV file
@@ -90,6 +164,12 @@ def calculate_features(h5_file_path, csv_file_path):
                             num_objects,
                             spatial_density,
                             ",".join(map(str, class_distribution)),
+                            mean_velocity,
+                            max_velocity,
+                            var_velocity,
+                            mean_acceleration,
+                            max_acceleration,
+                            var_acceleration,
                         ]
                     )
 
