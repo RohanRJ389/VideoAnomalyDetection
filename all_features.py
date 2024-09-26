@@ -206,7 +206,7 @@ def calculate_features(h5_file_path, csv_file_path):
     try:
         # Open the h5 file
         with h5py.File(h5_file_path, "r") as h5file:
-            print(f"Opened h5 file {h5_file_path}")
+            # print(f"Opened h5 file {h5_file_path}")
             # Get the dataset
             dataset = h5file["tracking_data"]
 
@@ -242,13 +242,13 @@ def calculate_features(h5_file_path, csv_file_path):
 
                 # Iterate over the frames
                 for frame_key in dataset.keys():
-                    print(f"Processing frame {frame_key}")
+                    # print(f"Processing frame {frame_key}")
                     num_objects = calculate_num_objects(dataset, frame_key)
-                    print(f"Number of objects in frame {frame_key}: {num_objects}")
+                    # print(f"Number of objects in frame {frame_key}: {num_objects}")
                     boxes = calculate_bounding_box_positions(dataset, frame_key)
-                    print(
-                        f"Number of bounding boxes in frame {frame_key}: {len(boxes)}"
-                    )
+                    # print(
+                        # f"Number of bounding boxes in frame {frame_key}: {len(boxes)}"
+                    # )
                     spatial_density = calculate_spatial_density(boxes)
                     class_distribution = calculate_class_distribution(
                         dataset, frame_key
