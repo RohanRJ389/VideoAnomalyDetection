@@ -2,3 +2,4 @@
 /vad
 notes.txt
 my_venv/pyvenv.cfg
+__pycache__
