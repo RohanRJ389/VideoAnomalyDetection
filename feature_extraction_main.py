@@ -1,4 +1,6 @@
-from feature_extractor import *
+from all_features import *
+
+
 def extract_features(h5_file_path):
     csv_file_path = 'features.csv'
     calculate_features(h5_file_path, csv_file_path)

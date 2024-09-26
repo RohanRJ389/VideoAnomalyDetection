@@ -1,16 +1,21 @@
 import h5py
 import csv
+import numpy as np
+
+
 def calculate_num_objects(dataset, frame_key):
     """Calculate the number of objects in a frame"""
     return len(dataset[frame_key].keys())
+
 
 def calculate_bounding_box_positions(dataset, frame_key):
     """Calculate the bounding box positions and areas for a frame"""
     boxes = []
     for track_key in dataset[frame_key].keys():
-        box = dataset[frame_key][track_key]['box'][:]
+        box = dataset[frame_key][track_key]["box"][:]
         boxes.append(box)
     return boxes
+
 
 def calculate_spatial_density(boxes):
     """Calculate the spatial density for a list of bounding boxes"""
@@ -22,21 +27,36 @@ def calculate_spatial_density(boxes):
         return 0
 
 
+def calculate_class_distribution(dataset, frame_key):
+    """Calculate the class-wise count of objects within the frame"""
+    class_counts = np.zeros(80)  # Initialize a fixed-size 1D vector of length 80
+    for track_key in dataset[frame_key].keys():
+        class_id = dataset[frame_key][track_key]["class_id"]
+        class_counts[class_id] += 1
+    total_objects = np.sum(class_counts)
+    if total_objects > 0:
+        class_distribution = class_counts / total_objects  # Normalize into percentages
+    else:
+        class_distribution = class_counts
+    return class_distribution
+
 def calculate_features(h5_file_path, csv_file_path):
     """Calculate features for a given h5 file and save to a CSV file"""
     try:
         # Open the h5 file
-        with h5py.File(h5_file_path, 'r') as h5file:
+        with h5py.File(h5_file_path, "r") as h5file:
             print(f"Opened h5 file {h5_file_path}")
             # Get the dataset
-            dataset = h5file['tracking_data']
+            dataset = h5file["tracking_data"]
 
             # Create the CSV file
-            with open(csv_file_path, 'w', newline='') as csvfile:
+            with open(csv_file_path, "w", newline="") as csvfile:
                 writer = csv.writer(csvfile)
 
                 # Write the header
-                writer.writerow(['Frame Number', 'Number of Objects', 'Spatial Density'])
+                writer.writerow(
+                    ["Frame Number", "Number of Objects", "Spatial Density", "Class Distribution"]
+                )
 
                 # Create a dictionary to store the features per frame
                 features_per_frame = {}
@@ -47,20 +67,33 @@ def calculate_features(h5_file_path, csv_file_path):
                     num_objects = calculate_num_objects(dataset, frame_key)
                     print(f"Number of objects in frame {frame_key}: {num_objects}")
                     boxes = calculate_bounding_box_positions(dataset, frame_key)
-                    print(f"Number of bounding boxes in frame {frame_key}: {len(boxes)}")
+                    print(
+                        f"Number of bounding boxes in frame {frame_key}: {len(boxes)}"
+                    )
                     spatial_density = calculate_spatial_density(boxes)
+                    class_distribution = calculate_class_distribution(
+                        dataset, frame_key
+                    )
 
                     # Store the features in the dictionary
-                    frame_number = int(frame_key.split('_')[-1])
+                    frame_number = int(frame_key.split("_")[-1])
                     features_per_frame[frame_number] = {
-                        'num_objects': num_objects,
-                        'spatial_density': spatial_density
+                        "num_objects": num_objects,
+                        "spatial_density": spatial_density,
+                        "class_distribution": class_distribution,
                     }
 
                     # Write the data to the CSV file
-                    writer.writerow([frame_number, num_objects, spatial_density])
+                    writer.writerow(
+                        [
+                            frame_number,
+                            num_objects,
+                            spatial_density,
+                            ",".join(map(str, class_distribution)),
+                        ]
+                    )
 
-            print(f"CSV file {csv_file_path} created successfully.")
+        print(f"CSV file {csv_file_path} created successfully.")
 
     except Exception as e:
         # Handle exception
