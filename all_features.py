@@ -113,6 +113,44 @@ def calculate_directionality(dataset, frame_key):
     direction_variance = np.var(directions) if directions else 0
     return mean_direction, direction_variance
 
+
+def calculate_mean_movement_magnitude(dataset, frame_key):
+    """Calculate the average displacement of all objects between consecutive frames"""
+    displacements = []
+    for track_key in dataset[frame_key].keys():
+        box = dataset[frame_key][track_key]["box"][:]
+        if int(frame_key.split("_")[-1]) > 1:
+            prev_frame_key = f"frame_{int(frame_key.split('_')[-1]) - 1:05d}"
+            if prev_frame_key in dataset and track_key in dataset[prev_frame_key]:
+                prev_box = dataset[prev_frame_key][track_key]["box"][:]
+                dx = box[0] - prev_box[0]
+                dy = box[1] - prev_box[1]
+                displacement = np.sqrt(dx**2 + dy**2)
+                displacements.append(displacement)
+            else:
+                displacements.append(0)
+    mean_displacement = np.mean(displacements) if displacements else 0
+    return mean_displacement
+
+def calculate_movement_vector_angle_variance(dataset, frame_key):
+    """Calculate the angular variance of object movements between frames"""
+    angles = []
+    for track_key in dataset[frame_key].keys():
+        box = dataset[frame_key][track_key]["box"][:]
+        if int(frame_key.split("_")[-1]) > 1:
+            prev_frame_key = f"frame_{int(frame_key.split('_')[-1]) - 1:05d}"
+            if prev_frame_key in dataset and track_key in dataset[prev_frame_key]:
+                prev_box = dataset[prev_frame_key][track_key]["box"][:]
+                dx = box[0] - prev_box[0]
+                dy = box[1] - prev_box[1]
+                angle = np.arctan2(dy, dx)
+                angles.append(angle)
+            else:
+                angles.append(0)
+    angle_variance = np.var(angles) if angles else 0
+    return angle_variance
+
+
 def calculate_features(h5_file_path, csv_file_path):
     """Calculate features for a given h5 file and save to a CSV file"""
     try:
@@ -141,6 +179,8 @@ def calculate_features(h5_file_path, csv_file_path):
                         "Variance in Acceleration",
                         "Mean Direction",
                         "Direction Variance",
+                        "Mean Displacement",
+                        "Angle Variance",
                     ]
                 )
 
@@ -169,6 +209,12 @@ def calculate_features(h5_file_path, csv_file_path):
                     mean_direction, direction_variance = calculate_directionality(
                         dataset, frame_key
                     )
+                    mean_displacement = calculate_mean_movement_magnitude(
+                        dataset, frame_key
+                    )
+                    angle_variance = calculate_movement_vector_angle_variance(
+                        dataset, frame_key
+                    )
 
                     # Store the features in the dictionary
                     frame_number = int(frame_key.split("_")[-1])
@@ -184,6 +230,8 @@ def calculate_features(h5_file_path, csv_file_path):
                         "var_acceleration": var_acceleration,
                         "mean_direction": mean_direction,
                         "direction_variance": direction_variance,
+                        "mean_displacement": mean_displacement,
+                        "angle_variance": angle_variance,
                     }
 
                     # Write the data to the CSV file
@@ -201,6 +249,8 @@ def calculate_features(h5_file_path, csv_file_path):
                             var_acceleration,
                             mean_direction,
                             direction_variance,
+                            mean_displacement,
+                            angle_variance,
                         ]
                     )
 
