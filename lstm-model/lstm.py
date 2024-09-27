@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 import numpy as np
@@ -11,7 +12,6 @@ import glob
 # Load Normal and Anomalous Data
 normal_features_path = r'F:\VideoAnomalyDetection\Data\extracted-features\Normal\*.csv'
 anomalous_features_path = r'F:\VideoAnomalyDetection\Data\extracted-features\Anomaly\*.csv'
-
 # Load normal features
 normal_files = glob.glob(normal_features_path)
 normal_dfs = [pd.read_csv(file) for file in normal_files]
@@ -21,6 +21,53 @@ normal_data = pd.concat(normal_dfs, ignore_index=True)
 anomalous_files = glob.glob(anomalous_features_path)
 anomalous_dfs = [pd.read_csv(file) for file in anomalous_files]
 anomalous_data = pd.concat(anomalous_dfs, ignore_index=True)
+
+# Preprocess data
+features = [
+    'Number of Objects', 'Spatial Density', 'Class Distribution',
+    'Mean Velocity', 'Max Velocity', 'Variance in Velocity',
+    'Mean Acceleration', 'Max Acceleration', 'Variance in Acceleration',
+    'Mean Direction', 'Direction Variance', 'Mean Displacement',
+    'Interaction Count', 'Mean IoU'
+]
+
+normal_data = normal_data[features]
+anomalous_data = anomalous_data[features]
+
+# Process the 'Class Distribution' feature
+normal_data['Class Distribution'] = normal_data['Class Distribution'].apply(
+    lambda x: np.array(list(map(float, x.split(','))))
+)
+anomalous_data['Class Distribution'] = anomalous_data['Class Distribution'].apply(
+    lambda x: np.array(list(map(float, x.split(','))))
+)
+
+# Preprocess numerical features
+scaler = MinMaxScaler()
+
+numerical_cols = [
+    'Number of Objects', 'Spatial Density', 'Mean Velocity',
+    'Max Velocity', 'Variance in Velocity', 'Mean Acceleration',
+    'Max Acceleration', 'Variance in Acceleration',
+    'Mean Direction', 'Direction Variance', 'Mean Displacement',
+    'Interaction Count', 'Mean IoU'
+]
+
+normal_data[numerical_cols] = scaler.fit_transform(normal_data[numerical_cols])
+anomalous_data[numerical_cols] = scaler.transform(anomalous_data[numerical_cols])
+
+# Convert the Class Distribution lists into a DataFrame
+class_distribution_df_normal = pd.DataFrame(normal_data['Class Distribution'].tolist(), index=normal_data.index)
+class_distribution_df_anomalous = pd.DataFrame(anomalous_data['Class Distribution'].tolist(), index=anomalous_data.index)
+
+# Concatenate the new class distribution DataFrame with the original DataFrame
+normal_data = pd.concat([normal_data.drop(columns=['Class Distribution']), class_distribution_df_normal], axis=1)
+anomalous_data = pd.concat([anomalous_data.drop(columns=['Class Distribution']), class_distribution_df_anomalous], axis=1)
+
+# Optional: Rename class distribution columns
+class_distribution_cols = [f'Class_{i}' for i in range(class_distribution_df_normal.shape[1])]
+normal_data.columns = list(numerical_cols) + class_distribution_cols
+anomalous_data.columns = list(numerical_cols) + class_distribution_cols
 
 # Combine data and create labels
 normal_data['label'] = 0
