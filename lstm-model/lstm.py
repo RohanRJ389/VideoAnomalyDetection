@@ -2,158 +2,142 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
+import numpy as np
 import pandas as pd
+import glob
 
-# import numpy as np
+# Load Normal and Anomalous Data
+normal_features_path = r'F:\VideoAnomalyDetection\Data\extracted-features\Normal\*.csv'
+anomalous_features_path = r'F:\VideoAnomalyDetection\Data\extracted-features\Anomaly\*.csv'
 
+# Load normal features
+normal_files = glob.glob(normal_features_path)
+normal_dfs = [pd.read_csv(file) for file in normal_files]
+normal_data = pd.concat(normal_dfs, ignore_index=True)
 
-# Custom Dataset to load CSV files
+# Load anomalous features
+anomalous_files = glob.glob(anomalous_features_path)
+anomalous_dfs = [pd.read_csv(file) for file in anomalous_files]
+anomalous_data = pd.concat(anomalous_dfs, ignore_index=True)
+
+# Combine data and create labels
+normal_data['label'] = 0
+anomalous_data['label'] = 1
+df = pd.concat([normal_data, anomalous_data], ignore_index=True)
+
+# Select features (excluding label)
+numerical_cols = df.select_dtypes(include=[np.number]).drop(columns=['label']).columns
+X = df[numerical_cols].values
+y = df['label'].values
+
+# 2. Prepare Data for LSTM (Split and Reshape into Sequences)
+# Split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Reshape the input data to have the shape [samples, time steps, features]
+# Here we'll assume a sliding window approach with a window size of 10 frames per sequence
+sequence_length = 10
+
+def create_sequences(X, y, seq_length):
+    sequences = []
+    labels = []
+    for i in range(len(X) - seq_length):
+        sequences.append(X[i:i + seq_length])
+        labels.append(y[i + seq_length])  # The label corresponds to the last frame in the sequence
+    return np.array(sequences), np.array(labels)
+
+X_train_seq, y_train_seq = create_sequences(X_train, y_train, sequence_length)
+X_test_seq, y_test_seq = create_sequences(X_test, y_test, sequence_length)
+
+# 3. Create Dataset and DataLoader
 class VideoDataset(Dataset):
-    def __init__(self, file_paths, labels):
-        self.file_paths = file_paths  # List of CSV file paths
-        self.labels = labels  # List of labels (1 for anomalous, 0 for normal)
+    def __init__(self, X, y):
+        self.X = X
+        self.y = y
 
     def __len__(self):
-        return len(self.file_paths)
+        return len(self.X)
 
     def __getitem__(self, idx):
-        # Load features from CSV file
-        features = pd.read_csv(self.file_paths[idx]).values[
-            :, 1:
-        ]  # Skipping the Frame Number
-        label = self.labels[idx]
-        return torch.tensor(features, dtype=torch.float32), torch.tensor(
-            label, dtype=torch.float32
-        )
+        return torch.tensor(self.X[idx], dtype=torch.float32), torch.tensor(self.y[idx], dtype=torch.long)
 
+train_dataset = VideoDataset(X_train_seq, y_train_seq)
+test_dataset = VideoDataset(X_test_seq, y_test_seq)
 
-# Attention mechanism (optional)
-class Attention(nn.Module):
-    def __init__(self, hidden_size):
-        super(Attention, self).__init__()
-        self.attn = nn.Linear(
-            hidden_size, 1
-        )  # Linear layer to compute attention scores
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-    def forward(self, lstm_output):
-        attn_weights = torch.softmax(
-            self.attn(lstm_output), dim=1
-        )  # Softmax over the time dimension
-        context = torch.sum(
-            attn_weights * lstm_output, dim=1
-        )  # Weighted sum of the LSTM output
-        return context
-
-
-# RNN-based Model with LSTM/GRU and optional attention
-class AnomalyDetectionModel(nn.Module):
-    def __init__(self, num_features, hidden_size, use_attention=False, rnn_type="LSTM"):
-        super(AnomalyDetectionModel, self).__init__()
-        self.rnn_type = rnn_type
-        self.use_attention = use_attention
+# 4. Define the LSTM Model
+class LSTMModel(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, output_size):
+        super(LSTMModel, self).__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
         self.hidden_size = hidden_size
 
-        # Define LSTM or GRU layer
-        if rnn_type == "LSTM":
-            self.rnn = nn.LSTM(num_features, hidden_size, batch_first=True)
-        else:
-            self.rnn = nn.GRU(num_features, hidden_size, batch_first=True)
-
-        # Attention layer (optional)
-        if use_attention:
-            self.attention = Attention(hidden_size)
-        else:
-            self.global_pool = nn.AdaptiveMaxPool1d(
-                1
-            )  # Max pooling over time dimension
-
-        # Fully connected layer for classification
-        self.fc = nn.Linear(hidden_size, 1)
-        self.sigmoid = nn.Sigmoid()
-
     def forward(self, x):
-        # x shape: (batch_size, sequence_length, num_features)
-        if self.rnn_type == "LSTM":
-            rnn_out, (hn, cn) = self.rnn(x)  # LSTM
-        else:
-            rnn_out, hn = self.rnn(x)  # GRU
-
-        if self.use_attention:
-            # Use attention to get context vector
-            context = self.attention(rnn_out)
-        else:
-            # Apply max pooling over time dimension
-            context = self.global_pool(rnn_out.permute(0, 2, 1)).squeeze(2)
-
-        # Fully connected layer for classification
-        out = self.fc(context)
-        out = self.sigmoid(out)  # Sigmoid for binary classification
+        # Initialize hidden state with zeros
+        h0 = torch.zeros(1, x.size(0), self.hidden_size).to(x.device)
+        c0 = torch.zeros(1, x.size(0), self.hidden_size).to(x.device)
+        
+        # Forward propagate LSTM
+        out, _ = self.lstm(x, (h0, c0))
+        
+        # Pass the output of the last time step to the fully connected layer
+        out = self.fc(out[:, -1, :])
         return out
 
+# Hyperparameters
+input_size = X_train_seq.shape[2]  # Number of features
+hidden_size = 64  # Number of LSTM units
+num_layers = 1  # Single LSTM layer
+output_size = 2  # Binary classification
 
-# Training function
-def train_model(model, train_loader, val_loader, num_epochs=10, lr=0.001):
-    criterion = nn.BCELoss()  # Binary cross entropy loss
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+# 5. Model, Loss Function, and Optimizer
+model = LSTMModel(input_size, hidden_size, num_layers, output_size)
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    for epoch in range(num_epochs):
-        model.train()
-        total_loss = 0
-        for features, labels in train_loader:
-            optimizer.zero_grad()
-            outputs = model(features)
-            loss = criterion(outputs.squeeze(), labels)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
+# 6. Training the Model
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = model.to(device)
 
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(train_loader)}")
+num_epochs = 2
+for epoch in range(num_epochs):
+    model.train()
+    running_loss = 0.0
+    for X_batch, y_batch in train_loader:
+        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+        
+        # Zero the parameter gradients
+        optimizer.zero_grad()
+        
+        # Forward pass
+        outputs = model(X_batch)
+        loss = criterion(outputs, y_batch)
+        
+        # Backward and optimize
+        loss.backward()
+        optimizer.step()
+        
+        running_loss += loss.item()
 
-        # Validation
-        model.eval()
-        correct = 0
-        total = 0
-        with torch.no_grad():
-            for features, labels in val_loader:
-                outputs = model(features)
-                predicted = (outputs.squeeze() > 0.5).float()
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+    print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}')
 
-        accuracy = 100 * correct / total
-        print(f"Validation Accuracy: {accuracy}%")
+# 7. Evaluate the Model
+model.eval()
+y_true = []
+y_pred = []
+with torch.no_grad():
+    for X_batch, y_batch in test_loader:
+        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+        outputs = model(X_batch)
+        _, predicted = torch.max(outputs, 1)
+        y_true.extend(y_batch.cpu().numpy())
+        y_pred.extend(predicted.cpu().numpy())
 
-
-# Load your CSV files and labels
-train_files = ["path_to_train_csv_1.csv", "path_to_train_csv_2.csv", ...]
-train_labels = [
-    0,
-    1,
-    ...,
-]  # Corresponding labels for normal (0) and anomalous (1) videos
-
-val_files = ["path_to_val_csv_1.csv", "path_to_val_csv_2.csv", ...]
-val_labels = [0, 1, ...]
-
-# Create DataLoader
-batch_size = 32
-train_dataset = VideoDataset(train_files, train_labels)
-val_dataset = VideoDataset(val_files, val_labels)
-
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
-# Model Parameters
-num_features = 16  # Number of features in your CSVs
-hidden_size = 128
-use_attention = True  # Set to False if you don't want attention
-rnn_type = "LSTM"  # Can switch to "GRU" if desired
-
-# Initialize and train the model
-model = AnomalyDetectionModel(
-    num_features=num_features,
-    hidden_size=hidden_size,
-    use_attention=use_attention,
-    rnn_type=rnn_type,
-)
-train_model(model, train_loader, val_loader, num_epochs=10, lr=0.001)
+# 8. Print Accuracy and Classification Report
+print(f"Accuracy: {accuracy_score(y_true, y_pred):.4f}")
+print(classification_report(y_true, y_pred, target_names=['Normal', 'Anomalous']))
