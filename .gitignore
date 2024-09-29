@@ -3,3 +3,5 @@
 notes.md
 my_venv/pyvenv.cfg
 __pycache__
+Data
+extracted_features_csv
