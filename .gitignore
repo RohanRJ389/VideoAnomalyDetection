@@ -5,3 +5,5 @@ my_venv/pyvenv.cfg
 __pycache__
 Data
 extracted_features_csv
+Anomaly_Dataset
+main.zip
