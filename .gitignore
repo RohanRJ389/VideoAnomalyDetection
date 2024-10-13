@@ -5,9 +5,11 @@ my_venv/pyvenv.cfg
 __pycache__
 Data
 extracted_features_csv
-Anomaly_Dataset
-main.zip
-runs
-Dataset_yolov5_v2
-yolo_v8_dataset
+Anomaly_detection_dataset
 Full_anomaly_detection_yolov5
+Dataset_yolov5_v2
+LightBgm-model
+sample_videos
+yolo11n.pt
+yolo_v8_dataset
+
