@@ -1,0 +1,7 @@
+train: C:\My_Stuff\College\Capstone Project\CAPSTONE\Capstone_2\VideoAnomalyDetection\Full_anomaly_detection_yolov5\train
+val: C:\My_Stuff\College\Capstone Project\CAPSTONE\Capstone_2\VideoAnomalyDetection\Full_anomaly_detection_yolov5\valid
+test: C:\My_Stuff\College\Capstone Project\CAPSTONE\Capstone_2\VideoAnomalyDetection\Full_anomaly_detection_yolov5\test
+
+nc: 5
+names: ['Fire', 'Guns', 'Human', 'Vehicle', 'knife']
+
